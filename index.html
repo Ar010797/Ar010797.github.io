@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SI TAHFIDZ PRO - Miftahussalam</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; color: #1e293b; }
+        [x-cloak] { display: none !important; }
+        
+        .nav-link { font-weight: 700; font-size: 12px; text-transform: uppercase; padding: 12px 16px; transition: 0.3s; color: #64748b; cursor: pointer; }
+        .nav-link.active { color: #059669; border-bottom: 3px solid #059669; }
+
+        .report-page {
+            width: 210mm; min-height: 297mm; padding: 15mm; margin: 0 auto;
+            background: #ffffff !important; color: #000000 !important;
+            position: relative; box-sizing: border-box;
+        }
+
+        .table-report { width: 100%; border-collapse: collapse !important; border: 1px solid #000 !important; table-layout: fixed; }
+        .table-report th, .table-report td { border: 1px solid #000 !important; padding: 6px 2px; font-size: 9px; text-align: center; vertical-align: middle; color: #000 !important; background-color: transparent !important; }
+        .table-report th { background-color: #f8fafc !important; font-weight: 800; }
+        .col-nama { width: 140px; text-align: left !important; padding-left: 8px !important; }
+        .col-no { width: 30px; }
+        .col-cap { width: 90px; }
+        .kop-header { border-bottom: 4px double #000; margin-bottom: 20px; padding-bottom: 10px; }
+
+        /* FIX: Class khusus saat mode export/print untuk menangani Textarea */
+        .export-mode textarea { display: none !important; }
+        .export-mode .print-view-text { display: block !important; }
+
+        @media print { 
+            .no-print { display: none !important; } 
+            .report-page { box-shadow: none; margin: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; } 
+            /* Saat print biasa (Ctrl+P) juga sembunyikan textarea */
+            textarea { display: none !important; }
+            .print-view-text { display: block !important; }
+        }
+    </style>
+</head>
+<body x-data="tahfidzApp()">
+
+    <template x-if="!auth.isLoggedIn">
+        <div class="fixed inset-0 z-[100] bg-slate-900 flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl">
+                <div class="text-center mb-6">
+                    <img :src="branding.logo" class="h-16 mx-auto mb-3">
+                    <h2 class="text-xl font-black uppercase text-slate-800" x-text="branding.nama"></h2>
+                </div>
+                <div class="space-y-4">
+                    <input type="text" x-model="auth.user" placeholder="Username" class="w-full p-4 bg-slate-100 rounded-2xl outline-none font-bold">
+                    <input type="password" x-model="auth.pass" @keyup.enter="checkLogin()" placeholder="Password" class="w-full p-4 bg-slate-100 rounded-2xl outline-none font-bold">
+                    <button @click="checkLogin()" class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest">Sign In</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <div x-show="auth.isLoggedIn" x-cloak>
+        <nav class="sticky top-0 z-50 bg-white border-b no-print">
+            <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <img :src="branding.logo" class="h-8">
+                    <span class="font-black text-xs uppercase text-emerald-900" x-text="branding.nama"></span>
+                </div>
+                <div class="flex">
+                    <div @click="view = 'input'" :class="view === 'input' ? 'active' : ''" class="nav-link">Input</div>
+                    <div @click="view = 'laporan'" :class="view === 'laporan' ? 'active' : ''" class="nav-link">Laporan</div>
+                    <div @click="view = 'admin'" :class="view === 'admin' ? 'active' : ''" class="nav-link">Admin</div>
+                    <div @click="logout()" class="nav-link text-red-500">Keluar</div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto p-6 md:p-10">
+            
+            <section x-show="view === 'input'" x-transition>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Tanggal</label>
+                        <input type="date" x-model="input.date" class="w-full p-3 bg-slate-50 border rounded-xl font-bold">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Kelompok</label>
+                        <select x-model="input.group" class="w-full p-3 bg-slate-50 border rounded-xl font-bold">
+                            <option value="">-- Pilih Kelompok --</option>
+                            <template x-for="g in groups" :key="g"><option :value="g" x-text="g"></option></template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Pengampu</label>
+                        <input type="text" x-model="teachers[input.group]" class="w-full p-3 bg-slate-50 border rounded-xl font-bold" placeholder="Nama Guru">
+                    </div>
+                </div>
+
+                <div x-show="input.group" class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-32">
+                    <template x-for="s in getStudents(input.group)" :key="s.id">
+                        <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                            <h3 class="font-black text-slate-800 text-xs mb-4 border-b pb-2" x-text="s.name"></h3>
+                            <div class="grid grid-cols-3 gap-3 text-center">
+                                <div class="bg-emerald-50 p-2 rounded-xl border border-emerald-100">
+                                    <p class="text-[9px] font-bold text-emerald-700 mb-2 uppercase">Hafalan</p>
+                                    <input type="text" x-model="tempData[s.id + '_h_srt']" placeholder="Surah" class="w-full p-2 text-xs border rounded-lg mb-1">
+                                    <input type="text" x-model="tempData[s.id + '_h_ayt']" placeholder="Ayat" class="w-full p-2 text-xs border rounded-lg mb-1">
+                                    <input type="number" x-model="tempData[s.id + '_h_jml']" placeholder="Jml" class="w-full p-2 text-xs border rounded-lg font-bold">
+                                </div>
+                                <div class="bg-blue-50 p-2 rounded-xl border border-blue-100">
+                                    <p class="text-[9px] font-bold text-blue-700 mb-2 uppercase">Tilawah</p>
+                                    <input type="text" x-model="tempData[s.id + '_t_srt']" placeholder="Surah" class="w-full p-2 text-xs border rounded-lg mb-1">
+                                    <input type="text" x-model="tempData[s.id + '_t_ayt']" placeholder="Ayat" class="w-full p-2 text-xs border rounded-lg mb-1">
+                                    <input type="number" x-model="tempData[s.id + '_t_jml']" placeholder="Jml" class="w-full p-2 text-xs border rounded-lg font-bold">
+                                </div>
+                                <div class="bg-orange-50 p-2 rounded-xl border border-orange-100">
+                                    <p class="text-[9px] font-bold text-orange-700 mb-2 uppercase">Ummi</p>
+                                    <input type="text" x-model="tempData[s.id + '_u_jld']" placeholder="Jilid" class="w-full p-2 text-xs border rounded-lg mb-1">
+                                    <input type="text" x-model="tempData[s.id + '_u_hal']" placeholder="Hal" class="w-full p-2 text-xs border rounded-lg mb-1">
+                                    <input type="number" x-model="tempData[s.id + '_u_jml']" placeholder="Jml" class="w-full p-2 text-xs border rounded-lg font-bold">
+                                </div>
+                            </div>
+                            <input type="text" x-model="tempData[s.id + '_h_cap']" placeholder="Capaian Juz..." class="w-full mt-3 p-3 text-xs border bg-slate-50 rounded-xl font-bold">
+                        </div>
+                    </template>
+                </div>
+                <div class="fixed bottom-8 left-1/2 -translate-x-1/2 no-print z-40">
+                    <button @click="saveDaily()" class="bg-slate-900 text-white px-12 py-4 rounded-2xl font-black shadow-2xl hover:scale-105 transition">SIMPAN DATA HARIAN</button>
+                </div>
+            </section>
+
+            <section x-show="view === 'laporan'" x-transition>
+                <div class="bg-white p-6 rounded-3xl border shadow-sm mb-8 flex flex-wrap gap-4 items-end no-print">
+                    <div class="flex-1 grid grid-cols-2 gap-4 min-w-[320px]">
+                        <input type="month" x-model="report.month" class="p-3 border rounded-xl font-bold">
+                        <select x-model="report.group" class="p-3 border rounded-xl font-bold">
+                            <option value="">-- Pilih Kelompok --</option>
+                            <template x-for="g in groups" :key="g"><option :value="g" x-text="g"></option></template>
+                        </select>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="downloadJPG()" class="bg-amber-500 text-white px-6 py-3 rounded-xl font-bold text-xs hover:bg-amber-600 transition">JPG</button>
+                        <button @click="downloadPDF()" class="bg-rose-600 text-white px-6 py-3 rounded-xl font-bold text-xs hover:bg-rose-700 transition">PDF</button>
+                    </div>
+                </div>
+
+                <div class="report-page shadow-2xl" id="report-content">
+                    <div class="relative z-10">
+                        <div class="flex items-center justify-center gap-8 kop-header">
+                            <img :src="branding.logo" class="h-20">
+                            <div class="text-center">
+                                <h1 class="text-2xl font-black uppercase tracking-tighter">Laporan Tahfidz & Tilawah</h1>
+                                <h2 class="text-xl font-bold text-emerald-800" x-text="branding.nama"></h2>
+                            </div>
+                        </div>
+                        <div class="flex justify-between text-[11px] font-bold mb-4 uppercase">
+                            <div class="space-y-1">
+                                <p>KELOMPOK : <span x-text="report.group || '-'"></span></p>
+                                <p>PENGAMPU : <span x-text="teachers[report.group] || '-'"></span></p>
+                            </div>
+                            <div><p>PERIODE : <span x-text="formatMonth(report.month)"></span></p></div>
+                        </div>
+                        <table class="table-report">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" class="col-no">NO</th>
+                                    <th rowspan="2" class="col-nama">NAMA</th>
+                                    <th colspan="3">HAFALAN AL-QUR'AN</th>
+                                    <th colspan="3">TILAWAH AL-QUR'AN</th>
+                                    <th colspan="3">TILAWAH UMMI</th>
+                                    <th rowspan="2" class="col-cap">CAPAIAN</th>
+                                </tr>
+                                <tr>
+                                    <th>AWL</th><th>AKH</th><th>JML</th>
+                                    <th>AWL</th><th>AKH</th><th>JML</th>
+                                    <th>AWL</th><th>AKH</th><th>JML</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(s, index) in generateReportData()" :key="index">
+                                    <tr>
+                                        <td x-text="index + 1"></td>
+                                        <td class="col-nama font-bold" x-text="s.name"></td>
+                                        <td x-text="s.h.awal"></td><td x-text="s.h.akhir"></td><td class="font-bold" x-text="s.h.total"></td>
+                                        <td x-text="s.t.awal"></td><td x-text="s.t.akhir"></td><td class="font-bold" x-text="s.t.total"></td>
+                                        <td x-text="s.u.awal"></td><td x-text="s.u.akhir"></td><td class="font-bold" x-text="s.u.total"></td>
+                                        <td class="font-bold text-[8px]" x-text="s.capaian"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                        <div class="mt-8">
+                            <p class="text-[10px] font-black uppercase italic underline mb-1">Evaluasi & Catatan Guru:</p>
+                            <div class="border-2 border-black rounded-2xl p-4 min-h-[140px]">
+                                <textarea x-model="evaluations[evalKey()]" @input="saveToStorage()" class="w-full h-24 text-xs font-bold bg-transparent border-none outline-none no-print resize-none" placeholder="Tulis catatan..."></textarea>
+                                
+                                <div class="print-view-text hidden text-xs font-bold whitespace-pre-wrap leading-relaxed" x-text="evaluations[evalKey()] || '-'"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section x-show="view === 'admin'" x-transition class="max-w-3xl mx-auto space-y-6">
+                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                    <h2 class="font-black mb-4 uppercase text-sm">Identitas Lembaga</h2>
+                    <input type="text" x-model="branding.nama" @input="saveToStorage()" class="w-full p-3 border rounded-xl font-bold mb-4">
+                    <input type="file" @change="handleLogoUpload" class="text-xs">
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                    <h2 class="font-black mb-4 uppercase text-sm">Kelola Kelompok</h2>
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" x-model="newGroupName" placeholder="Nama Kelompok Baru..." class="flex-1 p-3 border rounded-xl font-bold">
+                        <button @click="addGroup()" class="bg-blue-600 text-white px-6 rounded-xl font-bold">TAMBAH</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <template x-for="(g, index) in groups" :key="index">
+                            <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border">
+                                <span class="text-xs font-bold uppercase" x-text="g"></span>
+                                <button @click="deleteGroup(g)" class="text-red-500 font-bold px-2">✕</button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                    <h2 class="font-black mb-4 uppercase text-sm">Database Santri</h2>
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" x-model="newStudentName" placeholder="Nama Santri..." class="flex-1 p-3 border rounded-xl font-bold">
+                        <button @click="addStudent()" class="bg-emerald-600 text-white px-6 rounded-xl font-bold">TAMBAH</button>
+                    </div>
+                    <div class="space-y-2 max-h-80 overflow-y-auto pr-2">
+                        <template x-for="s in students" :key="s.id">
+                            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border">
+                                <span class="text-xs font-bold uppercase" x-text="s.name"></span>
+                                <div class="flex gap-2">
+                                    <select x-model="s.group" @change="saveToStorage()" class="text-[10px] border rounded p-1 font-bold">
+                                        <template x-for="g in groups" :key="g"><option :value="g" x-text="g"></option></template>
+                                    </select>
+                                    <button @click="deleteStudent(s.id)" class="text-red-500 font-bold px-2">✕</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        function tahfidzApp() {
+            return {
+                auth: { isLoggedIn: localStorage.getItem('mif_session') === 'true', user: '', pass: '' },
+                view: 'input',
+                newStudentName: '',
+                newGroupName: '',
+                branding: JSON.parse(localStorage.getItem('mif_brand')) || { nama: 'SI MIFTAHUSSALAM', logo: 'https://cdn-icons-png.flaticon.com/512/2991/2991148.png' },
+                groups: JSON.parse(localStorage.getItem('mif_groups')) || ['HALQOH IKHWAN 1B', 'HALQOH AKHWAT', 'KELOMPOK JUZ 30'],
+                students: JSON.parse(localStorage.getItem('mif_students')) || [],
+                logs: JSON.parse(localStorage.getItem('mif_logs')) || [],
+                teachers: JSON.parse(localStorage.getItem('mif_teachers')) || {},
+                evaluations: JSON.parse(localStorage.getItem('mif_evals')) || {},
+                input: { date: new Date().toISOString().slice(0, 10), group: '' },
+                report: { month: new Date().toISOString().slice(0, 7), group: '' },
+                tempData: {},
+
+                checkLogin() {
+                    if(this.auth.user === 'Simiftahussalam' && this.auth.pass === 'Bismillah') {
+                        this.auth.isLoggedIn = true;
+                        localStorage.setItem('mif_session', 'true');
+                    } else { alert('Gagal Login'); }
+                },
+                logout() { this.auth.isLoggedIn = false; localStorage.removeItem('mif_session'); },
+                handleLogoUpload(e) {
+                    const reader = new FileReader();
+                    reader.onload = (f) => { this.branding.logo = f.target.result; this.saveToStorage(); };
+                    reader.readAsDataURL(e.target.files[0]);
+                },
+                addGroup() {
+                    if(!this.newGroupName) return;
+                    if(this.groups.includes(this.newGroupName.toUpperCase())) return alert('Kelompok sudah ada!');
+                    this.groups.push(this.newGroupName.toUpperCase());
+                    this.newGroupName = '';
+                    this.saveToStorage();
+                },
+                deleteGroup(name) {
+                    if(confirm(`Hapus kelompok ${name}?`)) {
+                        this.groups = this.groups.filter(g => g !== name);
+                        this.saveToStorage();
+                    }
+                },
+                addStudent() {
+                    if(!this.newStudentName) return;
+                    this.students.push({ id: Date.now(), name: this.newStudentName.toUpperCase(), group: this.groups[0] });
+                    this.newStudentName = '';
+                    this.saveToStorage();
+                },
+                deleteStudent(id) { if(confirm('Hapus santri?')) { this.students = this.students.filter(s => s.id !== id); this.saveToStorage(); } },
+                saveDaily() {
+                    if(!this.input.group) return alert('Pilih kelompok!');
+                    const gStudents = this.getStudents(this.input.group);
+                    gStudents.forEach(s => {
+                        this.logs = this.logs.filter(l => !(l.sid === s.id && l.date === this.input.date));
+                        this.logs.push({
+                            sid: s.id, date: this.input.date,
+                            h: { srt: this.tempData[s.id + '_h_srt'], ayt: this.tempData[s.id + '_h_ayt'], jml: this.tempData[s.id + '_h_jml'], cap: this.tempData[s.id + '_h_cap'] },
+                            t: { srt: this.tempData[s.id + '_t_srt'], ayt: this.tempData[s.id + '_t_ayt'], jml: this.tempData[s.id + '_t_jml'] },
+                            u: { jld: this.tempData[s.id + '_u_jld'], hal: this.tempData[s.id + '_u_hal'], jml: this.tempData[s.id + '_u_jml'] }
+                        });
+                    });
+                    this.saveToStorage();
+                    alert('Data Disimpan!');
+                },
+                generateReportData() {
+                    if(!this.report.group) return [];
+                    return this.students.filter(s => s.group === this.report.group).map(s => {
+                        const mLogs = this.logs.filter(l => l.sid === s.id && l.date.startsWith(this.report.month)).sort((a,b) => a.date.localeCompare(b.date));
+                        let res = { name: s.name, h:{awal:'-',akhir:'-',total:0}, t:{awal:'-',akhir:'-',total:0}, u:{awal:'-',akhir:'-',total:0}, capaian: '-' };
+                        if(mLogs.length > 0) {
+                            const hl = mLogs.filter(x => x.h.srt);
+                            if(hl.length > 0) {
+                                res.h.awal = hl[0].h.srt + ' (' + hl[0].h.ayt + ')';
+                                res.h.akhir = hl[hl.length-1].h.srt + ' (' + hl[hl.length-1].h.ayt + ')';
+                                res.h.total = hl.reduce((a, b) => a + (parseInt(b.h.jml) || 0), 0);
+                                res.capaian = hl[hl.length-1].h.cap || '-';
+                            }
+                            const tl = mLogs.filter(x => x.t.srt);
+                            if(tl.length > 0) {
+                                res.t.awal = tl[0].t.srt + ' (' + tl[0].t.ayt + ')';
+                                res.t.akhir = tl[tl.length-1].t.srt + ' (' + tl[tl.length-1].t.ayt + ')';
+                                res.t.total = tl.reduce((a, b) => a + (parseInt(b.t.jml) || 0), 0);
+                            }
+                            const ul = mLogs.filter(x => x.u.jld);
+                            if(ul.length > 0) {
+                                res.u.awal = ul[0].u.jld + ' (H.' + ul[0].u.hal + ')';
+                                res.u.akhir = ul[ul.length-1].u.jld + ' (H.' + ul[ul.length-1].u.hal + ')';
+                                res.u.total = ul.reduce((a, b) => a + (parseInt(b.u.jml) || 0), 0);
+                            }
+                        }
+                        return res;
+                    });
+                },
+                downloadJPG() {
+                    const el = document.getElementById('report-content');
+                    // Aktifkan mode export untuk mengganti textarea dengan div teks penuh
+                    el.classList.add('export-mode');
+                    
+                    html2canvas(el, { scale: 3, useCORS: true, backgroundColor: "#ffffff" }).then(canvas => {
+                        const link = document.createElement('a');
+                        link.download = `LAPORAN_${this.report.group}.jpg`;
+                        link.href = canvas.toDataURL('image/jpeg', 1.0);
+                        link.click();
+                        
+                        // Kembalikan ke tampilan normal
+                        el.classList.remove('export-mode');
+                    });
+                },
+                downloadPDF() {
+                    const el = document.getElementById('report-content');
+                    // Aktifkan mode export agar rapi di PDF
+                    el.classList.add('export-mode');
+
+                    const opt = { 
+                        margin: 0, 
+                        filename: `LAPORAN_${this.report.group}.pdf`, 
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, useCORS: true, scrollY: 0 }, 
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } 
+                    };
+                    
+                    html2pdf().set(opt).from(el).save().then(() => {
+                        // Kembalikan ke tampilan normal setelah save selesai
+                        el.classList.remove('export-mode');
+                    });
+                },
+                saveToStorage() {
+                    localStorage.setItem('mif_brand', JSON.stringify(this.branding));
+                    localStorage.setItem('mif_groups', JSON.stringify(this.groups));
+                    localStorage.setItem('mif_students', JSON.stringify(this.students));
+                    localStorage.setItem('mif_logs', JSON.stringify(this.logs));
+                    localStorage.setItem('mif_evals', JSON.stringify(this.evaluations));
+                    localStorage.setItem('mif_teachers', JSON.stringify(this.teachers));
+                },
+                getStudents(grp) { return this.students.filter(s => s.group === grp); },
+                formatMonth(ym) {
+                    if(!ym) return '-';
+                    const [y, m] = ym.split('-');
+                    const mos = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+                    return mos[parseInt(m)-1] + ' ' + y;
+                },
+                evalKey() { return `${this.report.group}_${this.report.month}`; }
+            }
+        }
+    </script>
+</body>
+</html>
